@@ -1,68 +1,57 @@
 import streamlit as st
 import yfinance as yf
 import feedparser
-import pandas as pd
 
-st.set_page_config(page_title="Intelligence Dashboard", layout="wide")
+st.set_page_config(page_title="Market Intelligence", layout="wide")
+st.title("📊 Market Intelligence Dashboard")
 
-st.title("📊 Intelligence Dashboard")
-
-# --- 1. マーケット指標の定義 ---
-# 日本国債10年はデータソースによりシンボルが不安定なため、
-# yfinanceで安定している代表的なシンボルをセットしています
+# --- 1. 指標データの取得と表示 ---
+# 前日比を計算するため2日分取得
 tickers = {
-    "ドル円": "JPY=X",
-    "日経平均": "^N225",
-    "NYダウ": "^DJI",
-    "NASDAQ": "^IXIC",
-    "米国債10年": "^TNX",
-    "日本国債10年": "GJGB10Y.SG", # または ^JGB10Y-SG
-    "金先物": "GC=F"
+    "ドル円": "JPY=X", "日経平均": "^N225", "NYダウ": "^DJI",
+    "NASDAQ": "^IXIC", "米10年債": "^TNX", "日10年債": "GJGB10Y.SG"
 }
 
-# 4列レイアウトで指標を表示
 cols = st.columns(4)
 
+# 基本指数の表示
 for i, (name, sym) in enumerate(tickers.items()):
     with cols[i % 4]:
-        try:
-            # 前日差を計算するために2日分取得
-            data = yf.Ticker(sym).history(period="2d")
-            if not data.empty and len(data) >= 2:
-                current = data['Close'].iloc[-1]
-                prev = data['Close'].iloc[-2]
-                delta = current - prev
-                
-                # 表示形式の調整（金利やドル円は小数点2桁、株価はカンマ区切り）
-                if "10年" in name or "ドル円" in name:
-                    val_str = f"{current:.2f}"
-                    delta_str = f"{delta:.2f}"
-                else:
-                    val_str = f"{current:,.0f}"
-                    delta_str = f"{delta:,.0f}"
-                
-                st.metric(label=name, value=val_str, delta=delta_str)
-        except:
-            st.caption(f"{name}: 取得エラー")
+        data = yf.Ticker(sym).history(period="2d")
+        if len(data) >= 2:
+            current = data['Close'].iloc[-1]
+            delta = current - data['Close'].iloc[-2]
+            fmt = ".2f" if "10年" in name or "ドル円" in name else ",.0f"
+            st.metric(name, f"{current:{fmt}}", f"{delta:{fmt}}")
+
+# --- 2. 金価格（円建て/g）の計算と表示 ---
+with cols[2]: # 空いている3列目に配置
+    try:
+        gold_data = yf.Ticker("GC=F").history(period="2d")
+        fx_data = yf.Ticker("JPY=X").history(period="2d")
+        
+        # 現在と前日の価格を計算
+        g_now = (gold_data['Close'].iloc[-1] * fx_data['Close'].iloc[-1]) / 31.1035
+        g_prev = (gold_data['Close'].iloc[-2] * fx_data['Close'].iloc[-2]) / 31.1035
+        st.metric("金 (円建て/g)", f"{g_now:,.0f}円", f"{g_now - g_prev:,.0f}円")
+    except:
+        st.caption("金価格計算エラー")
 
 st.divider()
 
-# --- 2. ニュース・トレンドセクション ---
-col_news1, col_news2 = st.columns(2)
+# --- 3. 投資に役立つニュースの絞り込み ---
+col_n1, col_n2 = st.columns(2)
 
-def display_rss(url, title, count=5):
+def show_news(url, title):
     st.subheader(title)
     feed = feedparser.parse(url)
-    for entry in feed.entries[:count]:
-        st.markdown(f"・ [{entry.title}]({entry.link})")
+    for entry in feed.entries[:5]:
+        st.write(f"・ [{entry.title}]({entry.link})")
 
-with col_news1:
-    # Googleニュースの「ビジネス」カテゴリ
-    display_rss("https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=ja&gl=JP&ceid=JP:ja", "🏦 マーケット変動要因")
-    
-    # AI関連（キーワード検索RSS）
-    display_rss("https://news.google.com/rss/search?q=Generative+AI+OR+LLM+OR+NVIDIA&hl=ja&gl=JP&ceid=JP:ja", "🤖 AI関連ニュース")
+with col_n1:
+    # 市場全体を動かすマクロ要因（FOMCや日銀など）
+    show_news("https://news.google.com/rss/search?q=FOMC+OR+日銀+OR+雇用統計+OR+CPI&hl=ja&gl=JP&ceid=JP:ja", "⚖️ 市場変動・マクロ要因")
 
-with col_news2:
-    # Googleニュースの「テクノロジー」カテゴリ（社会トレンドの代替）
-    display_rss("https://news.google.com/rss/headlines/section/topic/TECHNOLOGY?hl=ja&gl=JP&ceid=JP:ja", "📈 社会・ITトレンド")
+with col_n2:
+    # 成長の源泉となるテック・AIトレンド
+    show_news("https://news.google.com/rss/search?q=NVIDIA+OR+OpenAI+OR+半導体+OR+Generative+AI&hl=ja&gl=JP&ceid=JP:ja", "🤖 テック・AIトレンド")
