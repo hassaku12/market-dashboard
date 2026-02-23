@@ -55,3 +55,12 @@ with col_n1:
 with col_n2:
     # 成長の源泉となるテック・AIトレンド
     show_news("https://news.google.com/rss/search?q=NVIDIA+OR+OpenAI+OR+半導体+OR+Generative+AI&hl=ja&gl=JP&ceid=JP:ja", "🤖 テック・AIトレンド")
+
+# --- データの取得関数をキャッシュ化する ---
+@st.cache_data(ttl=300)  # 300秒（5分間）は同じデータを使う設定
+def get_market_data(symbol):
+    return yf.Ticker(symbol).history(period="2d")
+
+# --- 呼び出し部分の書き換え例 ---
+# data = yf.Ticker(sym).history(period="2d")  <-- これを以下に変更
+data = get_market_data(sym)
